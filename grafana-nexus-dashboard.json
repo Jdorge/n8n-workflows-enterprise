@@ -1,0 +1,57 @@
+{
+    "__inputs": [],
+    "title": "NEXUS AI - Overview Geral",
+    "tags": [
+        "nexus",
+        "ai-agents"
+    ],
+    "panels": [
+        {
+            "title": "Uptime Sistema (99.9% SLA)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "up"
+                }
+            ],
+            "thresholds": [
+                {
+                    "color": "green",
+                    "value": null
+                }
+            ]
+        },
+        {
+            "title": "Custo LLM Hoje (R$)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(agent_cost_usd) * 320"
+                }
+            ]
+        },
+        {
+            "title": "Orçamentos Gerados / Conversão",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "agent_requests_total{agent_name='comercial'}"
+                },
+                {
+                    "expr": "agent_business_success_total{agent_name='comercial', business_success='true'}"
+                }
+            ]
+        },
+        {
+            "title": "Alertas Críticos (Human Review Queue)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "count(notion_review_queue{priority='critica'})"
+                }
+            ]
+        }
+    ],
+    "refresh": "30s",
+    "version": 1
+}

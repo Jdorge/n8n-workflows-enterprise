@@ -1,0 +1,199 @@
+groups:
+  - name: nexus-n8n
+    rules:
+      # Infrastructure Alerts
+      - alert: NEXUS_N8N_Down
+        expr: up{job="nexus-n8n"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: n8n
+        annotations:
+          summary: "NEXUS n8n is down"
+          description: "NEXUS n8n has been down for more than 5 minutes."
+          runbook_url: "https://nexus.runbooks.com/n8n-down"
+
+      - alert: NEXUS_N8N_HighCPU
+        expr: rate(container_cpu_usage_seconds_total{pod=~"nexus-n8n-.*"}[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          service: n8n
+        annotations:
+          summary: "High CPU usage on NEXUS n8n"
+          description: "CPU usage is above 80% for 10 minutes."
+
+      - alert: NEXUS_N8N_HighMemory
+        expr: container_memory_usage_bytes{pod=~"nexus-n8n-.*"} / container_spec_memory_limit_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          service: n8n
+        annotations:
+          summary: "High memory usage on NEXUS n8n"
+          description: "Memory usage is above 90%."
+
+      - alert: NEXUS_N8N_PodRestarts
+        expr: increase(kube_pod_container_status_restarts_total{pod=~"nexus-n8n-.*"}[10m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+          service: n8n
+        annotations:
+          summary: "NEXUS n8n pods restarting frequently"
+          description: "Pods have restarted more than 3 times in 10 minutes."
+
+      # Database Alerts
+      - alert: NEXUS_Postgres_Down
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: database
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL database is not responding."
+
+      - alert: NEXUS_Postgres_HighConnections
+        expr: pg_stat_activity_count{datname="n8n"} > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: database
+        annotations:
+          summary: "High database connections"
+          description: "Database has more than 80 active connections."
+
+      - alert: NEXUS_Postgres_SlowQueries
+        expr: rate(pg_stat_statements_total_time_seconds[5m]) / rate(pg_stat_statements_calls[5m]) > 1
+        for: 10m
+        labels:
+          severity: warning
+          service: database
+        annotations:
+          summary: "Slow database queries"
+          description: "Average query time is above 1 second."
+
+      # Redis Alerts
+      - alert: NEXUS_Redis_Down
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: cache
+        annotations:
+          summary: "Redis is down"
+          description: "Redis cache is not responding."
+
+      - alert: NEXUS_Redis_HighMemory
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          service: cache
+        annotations:
+          summary: "Redis high memory usage"
+          description: "Redis memory usage is above 90%."
+
+      # Business Logic Alerts
+      - alert: NEXUS_Workflow_Failure_Rate
+        expr: rate(n8n_workflow_failures_total[5m]) / rate(n8n_workflow_executions_total[5m]) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          service: n8n
+        annotations:
+          summary: "High workflow failure rate"
+          description: "Workflow failure rate is above 5%."
+
+      - alert: NEXUS_Agent_Error_Rate
+        expr: rate(agent_execution_errors_total[5m]) / rate(agent_executions_total[5m]) > 0.02
+        for: 15m
+        labels:
+          severity: warning
+          service: agents
+        annotations:
+          summary: "High agent error rate"
+          description: "Agent error rate is above 2%."
+
+      - alert: NEXUS_Queue_Backlog
+        expr: n8n_queue_size > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: n8n
+        annotations:
+          summary: "Workflow queue backlog"
+          description: "Workflow queue has more than 100 pending executions."
+
+      - alert: NEXUS_SLA_Breach_99_99
+        expr: (1 - (rate(n8n_uptime_seconds[7d]) / 86400)) > 0.0001
+        for: 1h
+        labels:
+          severity: critical
+          service: n8n
+        annotations:
+          summary: "99.99% SLA breach"
+          description: "Uptime is below 99.99% in the last 7 days."
+
+      - alert: NEXUS_Token_Budget_Exhaustion
+        expr: (token_budget_remaining / token_budget_total) < 0.1
+        for: 1h
+        labels:
+          severity: critical
+          service: ai
+        annotations:
+          summary: "Token budget nearly exhausted"
+          description: "Remaining token budget is below 10%."
+
+      - alert: NEXUS_Human_Review_Backlog
+        expr: notion_review_queue_pending > 50
+        for: 30m
+        labels:
+          severity: warning
+          service: review
+        annotations:
+          summary: "Human review queue backlog"
+          description: "More than 50 items pending human review."
+
+      # Performance Alerts
+      - alert: NEXUS_High_Latency
+        expr: histogram_quantile(0.95, rate(n8n_workflow_duration_seconds_bucket[5m])) > 30
+        for: 10m
+        labels:
+          severity: warning
+          service: n8n
+        annotations:
+          summary: "High workflow latency"
+          description: "95th percentile workflow duration is above 30 seconds."
+
+      - alert: NEXUS_Agent_Timeout
+        expr: increase(agent_execution_timeout_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: agents
+        annotations:
+          summary: "Agent execution timeouts"
+          description: "More than 5 agent timeouts in 5 minutes."
+
+      # Security Alerts
+      - alert: NEXUS_Unauthorized_Access
+        expr: rate(n8n_unauthorized_requests_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: critical
+          service: security
+        annotations:
+          summary: "Unauthorized access attempts"
+          description: "High rate of unauthorized access attempts."
+
+      - alert: NEXUS_API_Rate_Limit_Exceeded
+        expr: rate(n8n_rate_limit_exceeded_total[5m]) > 20
+        for: 5m
+        labels:
+          severity: warning
+          service: security
+        annotations:
+          summary: "API rate limit exceeded"
+          description: "Rate limit exceeded more than 20 times in 5 minutes."
