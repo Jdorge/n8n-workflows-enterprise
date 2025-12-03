@@ -1,0 +1,23 @@
+{
+  "name": "n8n-workflows-enterprise",
+  "version": "2.0.0",
+  "description": "Enterprise-grade automation platform with production-ready workflows for commercial, operations, financial, knowledge, and monitoring domains",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node server.js",
+    "build": "echo 'Build complete'",
+    "test": "echo 'No tests configured yet'",
+    "lint": "echo 'No linter configured yet'"
+  },
+  "keywords": [
+    "n8n",
+    "workflows",
+    "automation",
+    "enterprise"
+  ],
+  "author": "Infrastructure Team",
+  "license": "MIT",
+  "dependencies": {
+    "@vercel/analytics": "^1.1.1"
+  }
+}

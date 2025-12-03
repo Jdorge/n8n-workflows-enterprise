@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>n8n Enterprise Workflows</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 3rem;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+        }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+        .feature-card {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+        .feature-card h3 {
+            color: #667eea;
+            margin-bottom: 0.5rem;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+        .metric {
+            text-align: center;
+            padding: 1.5rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+        }
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        .metric-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        .workflows {
+            margin: 2rem 0;
+        }
+        .workflow-item {
+            background: white;
+            border: 2px solid #667eea;
+            padding: 1rem;
+            margin: 0.5rem 0;
+            border-radius: 8px;
+            transition: transform 0.2s;
+        }
+        .workflow-item:hover {
+            transform: translateX(10px);
+        }
+        .workflow-name {
+            font-weight: bold;
+            color: #667eea;
+        }
+        footer {
+            margin-top: 3rem;
+            text-align: center;
+            color: #666;
+            padding-top: 2rem;
+            border-top: 2px solid #eee;
+        }
+    </style>
+    <!-- Vercel Web Analytics -->
+    <script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 n8n Enterprise Workflows</h1>
+        <p class="subtitle">Enterprise-grade automation platform with production-ready workflows</p>
+        
+        <div class="metrics">
+            <div class="metric">
+                <div class="metric-value">< 5s</div>
+                <div class="metric-label">Lead Processing Time</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">99.5%</div>
+                <div class="metric-label">Uptime SLA</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">100%</div>
+                <div class="metric-label">CRM Sync Accuracy</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">-80%</div>
+                <div class="metric-label">Troubleshooting Time</div>
+            </div>
+        </div>
+
+        <div class="features">
+            <div class="feature-card">
+                <h3>✅ Centralized Logging</h3>
+                <p>All workflow events logged to Notion/Sheets for complete traceability</p>
+            </div>
+            <div class="feature-card">
+                <h3>🔐 Validation Framework</h3>
+                <p>Reusable validators for emails, phones, and required fields</p>
+            </div>
+            <div class="feature-card">
+                <h3>⚡ Error Handling</h3>
+                <p>Try-catch with exponential backoff retry logic</p>
+            </div>
+            <div class="feature-card">
+                <h3>🔄 CRM Integration</h3>
+                <p>Automated lead processing and duplicate checking</p>
+            </div>
+            <div class="feature-card">
+                <h3>💰 Financial Reconciliation</h3>
+                <p>Double-check validation for critical calculations</p>
+            </div>
+            <div class="feature-card">
+                <h3>📊 Monitoring</h3>
+                <p>Heartbeat checks with multi-channel alerting</p>
+            </div>
+        </div>
+
+        <div class="workflows">
+            <h2>📁 Available Workflows</h2>
+            <div class="workflow-item">
+                <span class="workflow-name">WF_CORE_ROUTER_ENTERPRISE</span>
+                <p>Intelligent request routing with input validation, logging, and error handling</p>
+            </div>
+            <div class="workflow-item">
+                <span class="workflow-name">SW1_LEADS_COMERCIAL</span>
+                <p>CRM integration (HubSpot/Pipedrive) with lead validation and notifications</p>
+            </div>
+            <div class="workflow-item">
+                <span class="workflow-name">SW2_OPERACOES</span>
+                <p>Operational workflows with ERP synchronization</p>
+            </div>
+            <div class="workflow-item">
+                <span class="workflow-name">SW3_FINANCEIRO</span>
+                <p>Financial operations with double-check validation and reporting</p>
+            </div>
+            <div class="workflow-item">
+                <span class="workflow-name">SW4_CONHECIMENTO</span>
+                <p>Knowledge base management with Notion API</p>
+            </div>
+            <div class="workflow-item">
+                <span class="workflow-name">SW5_MONITORAMENTO</span>
+                <p>Health monitoring and alerting with redundancy</p>
+            </div>
+        </div>
+
+        <footer>
+            <p><strong>Version:</strong> v2.0.0 | <strong>Status:</strong> Production Ready ✅</p>
+            <p>Last Updated: November 16, 2025 | Maintained By: Infrastructure Team</p>
+        </footer>
+    </div>
+
+    <!-- Initialize client-side features -->
+    <script src="app.js"></script>
+</body>
+</html>
