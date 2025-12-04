@@ -1,0 +1,153 @@
+{
+  "name": "SW1_LEADS_COMERCIAL_v2.0.0",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "webhook/leads",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-leads",
+      "name": "Webhook Leads",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Validate Lead Data\nconst body = $input.first().json.body || $input.first().json;\n\nconst required = ['name', 'email', 'phone'];\nconst missing = required.filter(field => !body[field]);\n\nif (missing.length > 0) {\n  throw new Error(`Missing required fields: ${missing.join(', ')}`);\n}\n\n// Email validation\nconst emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\nif (!emailRegex.test(body.email)) {\n  throw new Error('Invalid email format');\n}\n\n// Phone normalization\nconst cleanPhone = body.phone.replace(/[^\\d+]/g, '');\nif (cleanPhone.length < 10) {\n  throw new Error('Invalid phone number');\n}\n\nreturn {\n  isValid: true,\n  lead: {\n    name: body.name.trim(),\n    email: body.email.toLowerCase().trim(),\n    phone: cleanPhone,\n    company: body.company || 'Não informado',\n    position: body.position || '',\n    source: body.source || 'website',\n    message: body.message || '',\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "validate-lead",
+      "name": "Validate Lead Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Calculate Lead Score\nconst lead = $input.first().json.lead;\nlet score = 0;\n\n// Email domain scoring (20 points)\nconst domain = lead.email.split('@')[1];\nconst freeEmails = ['gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com'];\nif (!freeEmails.includes(domain?.toLowerCase())) {\n  score += 20; // Corporate email\n} else {\n  score += 5;\n}\n\n// Company presence (15 points)\nif (lead.company && lead.company !== 'Não informado') {\n  score += 15;\n}\n\n// Position scoring (25 points)\nif (lead.position) {\n  const position = lead.position.toLowerCase();\n  const seniorTitles = ['ceo', 'cto', 'cfo', 'director', 'gerente', 'manager'];\n  const isSenior = seniorTitles.some(t => position.includes(t));\n  score += isSenior ? 25 : 10;\n}\n\n// Phone provided (15 points)\nif (lead.phone && lead.phone.length >= 10) {\n  score += 15;\n}\n\n// Source quality (25 points)\nconst sourceScores = {\n  'referral': 25,\n  'event': 20,\n  'website': 15,\n  'social_media': 12,\n  'cold_call': 8,\n  'other': 5\n};\nscore += sourceScores[lead.source] || 5;\n\nreturn {\n  ...lead,\n  score: Math.min(score, 100),\n  qualification: score >= 70 ? 'hot' : score >= 40 ? 'warm' : 'cold'\n};"
+      },
+      "id": "calculate-score",
+      "name": "Calculate Lead Score",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/contacts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.HUBSPOT_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParametersJson": "{\n  \"properties\": {\n    \"firstname\": \"{{ $json.name.split(' ')[0] }}\",\n    \"lastname\": \"{{ $json.name.split(' ').slice(1).join(' ') }}\",\n    \"email\": \"{{ $json.email }}\",\n    \"phone\": \"{{ $json.phone }}\",\n    \"company\": \"{{ $json.company }}\",\n    \"jobtitle\": \"{{ $json.position }}\",\n    \"leadscore\": {{ $json.score }},\n    \"hs_lead_status\": \"{{ $json.qualification.toUpperCase() }}\"\n  }\n}"
+      },
+      "id": "hubspot-create",
+      "name": "Create Contact HubSpot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.NOTION_SECRET}}"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParametersJson": "{\n  \"parent\": {\"database_id\": \"{{$env.NOTION_LEADS_DB_ID}}\"},\n  \"properties\": {\n    \"Name\": {\"title\": [{\"text\": {\"content\": \"{{ $json.name }}\"}}]},\n    \"Email\": {\"email\": \"{{ $json.email }}\"},\n    \"Phone\": {\"phone_number\": \"{{ $json.phone }}\"},\n    \"Company\": {\"rich_text\": [{\"text\": {\"content\": \"{{ $json.company }}\"}}]},\n    \"Score\": {\"number\": {{ $json.score }}},\n    \"Status\": {\"select\": {\"name\": \"{{ $json.qualification }}\"}},\n    \"Source\": {\"select\": {\"name\": \"{{ $json.source }}\"}},\n    \"Created\": {\"date\": {\"start\": \"{{ $json.timestamp }}\"}}\n  }\n}"
+      },
+      "id": "notion-lead",
+      "name": "Log Lead Notion",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [850, 400]
+    },
+    {
+      "parameters": {
+        "channel": "{{$env.SLACK_CHANNEL_LEADS}}",
+        "text": ":sparkles: *Novo Lead*\n\n*Nome:* {{ $json.name }}\n*Email:* {{ $json.email }}\n*Empresa:* {{ $json.company }}\n*Score:* {{ $json.score }} ({{ $json.qualification }})\n*Fonte:* {{ $json.source }}",
+        "otherOptions": {}
+      },
+      "id": "slack-notify",
+      "name": "Notify Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1050, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"message\": \"Lead processado com sucesso\",\n  \"leadId\": \"{{ $json.email }}\",\n  \"score\": {{ $json.score }},\n  \"qualification\": \"{{ $json.qualification }}\"\n}"
+      },
+      "id": "response-success",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    }
+  ],
+  "connections": {
+    "webhook-leads": {
+      "main": [[{"node": "validate-lead", "type": "main", "index": 0}]]
+    },
+    "validate-lead": {
+      "main": [[{"node": "calculate-score", "type": "main", "index": 0}]]
+    },
+    "calculate-score": {
+      "main": [
+        [
+          {"node": "hubspot-create", "type": "main", "index": 0},
+          {"node": "notion-lead", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "hubspot-create": {
+      "main": [[{"node": "slack-notify", "type": "main", "index": 0}]]
+    },
+    "notion-lead": {
+      "main": [[{"node": "slack-notify", "type": "main", "index": 0}]]
+    },
+    "slack-notify": {
+      "main": [[{"node": "response-success", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["comercial", "leads", "automation"],
+  "active": false
+}

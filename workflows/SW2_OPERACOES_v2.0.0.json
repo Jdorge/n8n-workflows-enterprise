@@ -1,0 +1,146 @@
+{
+  "name": "SW2_OPERACOES_v2.0.0",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "webhook/tasks",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-tasks",
+      "name": "Webhook Tasks",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Validate Task Data\nconst body = $input.first().json.body || $input.first().json;\n\nif (!body.title || body.title.trim().length < 5) {\n  throw new Error('Task title must be at least 5 characters');\n}\n\nconst validPriorities = ['low', 'medium', 'high', 'critical'];\nconst validStatuses = ['todo', 'in_progress', 'review', 'done'];\n\nreturn {\n  task: {\n    title: body.title.trim(),\n    description: body.description || '',\n    priority: validPriorities.includes(body.priority) ? body.priority : 'medium',\n    status: validStatuses.includes(body.status) ? body.status : 'todo',\n    assignee: body.assignee || 'unassigned',\n    dueDate: body.dueDate || null,\n    project: body.project || 'general',\n    tags: body.tags || [],\n    createdAt: new Date().toISOString(),\n    estimatedHours: body.estimatedHours || 0\n  }\n};"
+      },
+      "id": "validate-task",
+      "name": "Validate Task",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Calculate Task Priority Score\nconst task = $input.first().json.task;\nlet priorityScore = 0;\n\n// Base priority scoring\nconst priorityWeights = {\n  'critical': 100,\n  'high': 75,\n  'medium': 50,\n  'low': 25\n};\npriorityScore = priorityWeights[task.priority] || 50;\n\n// Due date urgency\nif (task.dueDate) {\n  const dueDate = new Date(task.dueDate);\n  const now = new Date();\n  const daysUntilDue = Math.ceil((dueDate - now) / (1000 * 60 * 60 * 24));\n  \n  if (daysUntilDue <= 1) {\n    priorityScore += 30; // Very urgent\n  } else if (daysUntilDue <= 3) {\n    priorityScore += 20; // Urgent\n  } else if (daysUntilDue <= 7) {\n    priorityScore += 10; // Soon\n  }\n}\n\n// Project importance\nconst criticalProjects = ['production', 'client', 'urgent'];\nif (criticalProjects.some(p => task.project.toLowerCase().includes(p))) {\n  priorityScore += 15;\n}\n\nreturn {\n  ...task,\n  priorityScore: Math.min(priorityScore, 100),\n  urgency: priorityScore >= 80 ? 'immediate' : priorityScore >= 60 ? 'high' : 'normal'\n};"
+      },
+      "id": "calculate-priority",
+      "name": "Calculate Priority",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.NOTION_SECRET}}"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParametersJson": "{\n  \"parent\": {\"database_id\": \"{{$env.NOTION_TASKS_DB_ID}}\"},\n  \"properties\": {\n    \"Title\": {\"title\": [{\"text\": {\"content\": \"{{ $json.title }}\"}}]},\n    \"Description\": {\"rich_text\": [{\"text\": {\"content\": \"{{ $json.description }}\"}}]},\n    \"Priority\": {\"select\": {\"name\": \"{{ $json.priority }}\"}},\n    \"Status\": {\"select\": {\"name\": \"{{ $json.status }}\"}},\n    \"Assignee\": {\"rich_text\": [{\"text\": {\"content\": \"{{ $json.assignee }}\"}}]},\n    \"Due Date\": {\"date\": {\"start\": \"{{ $json.dueDate || $json.createdAt }}\"}},\n    \"Project\": {\"select\": {\"name\": \"{{ $json.project }}\"}},\n    \"Priority Score\": {\"number\": {{ $json.priorityScore }}},\n    \"Estimated Hours\": {\"number\": {{ $json.estimatedHours }}}\n  }\n}"
+      },
+      "id": "notion-task",
+      "name": "Create Task Notion",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.urgency }}",
+              "operation": "equal",
+              "value2": "immediate"
+            }
+          ]
+        }
+      },
+      "id": "check-urgency",
+      "name": "Check Urgency",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 400]
+    },
+    {
+      "parameters": {
+        "channel": "{{$env.SLACK_CHANNEL_OPS}}",
+        "text": ":rotating_light: *TAREFA URGENTE*\n\n*Título:* {{ $json.title }}\n*Prioridade:* {{ $json.priority }} (Score: {{ $json.priorityScore }})\n*Responsável:* {{ $json.assignee }}\n*Projeto:* {{ $json.project }}\n*Prazo:* {{ $json.dueDate || 'Não definido' }}",
+        "otherOptions": {}
+      },
+      "id": "slack-urgent",
+      "name": "Notify Urgent",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1050, 350],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"message\": \"Tarefa criada com sucesso\",\n  \"task\": {\n    \"title\": \"{{ $json.title }}\",\n    \"priorityScore\": {{ $json.priorityScore }},\n    \"urgency\": \"{{ $json.urgency }}\",\n    \"status\": \"{{ $json.status }}\"\n  }\n}"
+      },
+      "id": "response-task",
+      "name": "Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    }
+  ],
+  "connections": {
+    "webhook-tasks": {
+      "main": [[{"node": "validate-task", "type": "main", "index": 0}]]
+    },
+    "validate-task": {
+      "main": [[{"node": "calculate-priority", "type": "main", "index": 0}]]
+    },
+    "calculate-priority": {
+      "main": [
+        [
+          {"node": "notion-task", "type": "main", "index": 0},
+          {"node": "check-urgency", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "check-urgency": {
+      "main": [
+        [{"node": "slack-urgent", "type": "main", "index": 0}],
+        [{"node": "response-task", "type": "main", "index": 0}]
+      ]
+    },
+    "notion-task": {
+      "main": [[{"node": "response-task", "type": "main", "index": 0}]]
+    },
+    "slack-urgent": {
+      "main": [[{"node": "response-task", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["operations", "tasks", "automation"],
+  "active": false
+}

@@ -1,0 +1,146 @@
+{
+  "name": "SW3_FINANCEIRO_v2.0.0",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "webhook/finance",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-finance",
+      "name": "Webhook Finance",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Validate Transaction Data\nconst body = $input.first().json.body || $input.first().json;\n\nconst validTypes = ['income', 'expense', 'transfer'];\nif (!validTypes.includes(body.type)) {\n  throw new Error('Invalid transaction type. Must be: income, expense, or transfer');\n}\n\nif (!body.amount || isNaN(body.amount) || body.amount <= 0) {\n  throw new Error('Invalid amount. Must be a positive number');\n}\n\nif (!body.description || body.description.trim().length < 3) {\n  throw new Error('Description must be at least 3 characters');\n}\n\nconst validCurrencies = ['BRL', 'USD', 'EUR'];\nconst currency = validCurrencies.includes(body.currency) ? body.currency : 'BRL';\n\nreturn {\n  transaction: {\n    type: body.type,\n    amount: parseFloat(body.amount).toFixed(2),\n    currency: currency,\n    description: body.description.trim(),\n    category: body.category || 'outros',\n    paymentMethod: body.paymentMethod || 'transfer',\n    reference: body.reference || `TXN-${Date.now()}`,\n    date: body.date || new Date().toISOString(),\n    tags: body.tags || [],\n    recurring: body.recurring || false,\n    notes: body.notes || ''\n  }\n};"
+      },
+      "id": "validate-transaction",
+      "name": "Validate Transaction",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Format Currency and Calculate Metrics\nconst tx = $input.first().json.transaction;\n\n// Format amount based on currency\nconst formatCurrency = (value, currency) => {\n  const num = parseFloat(value);\n  const locale = currency === 'BRL' ? 'pt-BR' : 'en-US';\n  return new Intl.NumberFormat(locale, {\n    style: 'currency',\n    currency: currency\n  }).format(num);\n};\n\n// Tax calculation (simplified)\nlet taxAmount = 0;\nif (tx.type === 'income') {\n  // Simplified tax calculation for income\n  taxAmount = parseFloat(tx.amount) * 0.15; // 15% withholding\n}\n\n// Net amount\nconst netAmount = tx.type === 'expense' \n  ? -parseFloat(tx.amount) \n  : parseFloat(tx.amount) - taxAmount;\n\nreturn {\n  ...tx,\n  formattedAmount: formatCurrency(tx.amount, tx.currency),\n  taxAmount: taxAmount.toFixed(2),\n  netAmount: netAmount.toFixed(2),\n  formattedNet: formatCurrency(netAmount, tx.currency),\n  isHighValue: parseFloat(tx.amount) >= 10000\n};"
+      },
+      "id": "process-transaction",
+      "name": "Process Transaction",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.NOTION_SECRET}}"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParametersJson": "{\n  \"parent\": {\"database_id\": \"{{$env.NOTION_FINANCIAL_DB_ID}}\"},\n  \"properties\": {\n    \"Reference\": {\"title\": [{\"text\": {\"content\": \"{{ $json.reference }}\"}}]},\n    \"Type\": {\"select\": {\"name\": \"{{ $json.type }}\"}},\n    \"Amount\": {\"number\": {{ $json.amount }}},\n    \"Currency\": {\"select\": {\"name\": \"{{ $json.currency }}\"}},\n    \"Net Amount\": {\"number\": {{ $json.netAmount }}},\n    \"Tax\": {\"number\": {{ $json.taxAmount }}},\n    \"Description\": {\"rich_text\": [{\"text\": {\"content\": \"{{ $json.description }}\"}}]},\n    \"Category\": {\"select\": {\"name\": \"{{ $json.category }}\"}},\n    \"Payment Method\": {\"select\": {\"name\": \"{{ $json.paymentMethod }}\"}},\n    \"Date\": {\"date\": {\"start\": \"{{ $json.date }}\"}},\n    \"High Value\": {\"checkbox\": {{ $json.isHighValue }}}\n  }\n}"
+      },
+      "id": "notion-finance",
+      "name": "Log to Notion",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isHighValue }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-high-value",
+      "name": "Is High Value?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 400]
+    },
+    {
+      "parameters": {
+        "channel": "{{$env.SLACK_CHANNEL_FINANCE}}",
+        "text": ":moneybag: *Transação de Alto Valor*\n\n*Tipo:* {{ $json.type }}\n*Valor:* {{ $json.formattedAmount }}\n*Líquido:* {{ $json.formattedNet }}\n*Descrição:* {{ $json.description }}\n*Categoria:* {{ $json.category }}\n*Referência:* {{ $json.reference }}",
+        "otherOptions": {}
+      },
+      "id": "slack-finance",
+      "name": "Notify High Value",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1050, 350],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"message\": \"Transação registrada com sucesso\",\n  \"transaction\": {\n    \"reference\": \"{{ $json.reference }}\",\n    \"type\": \"{{ $json.type }}\",\n    \"amount\": {{ $json.amount }},\n    \"netAmount\": {{ $json.netAmount }},\n    \"currency\": \"{{ $json.currency }}\"\n  }\n}"
+      },
+      "id": "response-finance",
+      "name": "Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    }
+  ],
+  "connections": {
+    "webhook-finance": {
+      "main": [[{"node": "validate-transaction", "type": "main", "index": 0}]]
+    },
+    "validate-transaction": {
+      "main": [[{"node": "process-transaction", "type": "main", "index": 0}]]
+    },
+    "process-transaction": {
+      "main": [
+        [
+          {"node": "notion-finance", "type": "main", "index": 0},
+          {"node": "check-high-value", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "check-high-value": {
+      "main": [
+        [{"node": "slack-finance", "type": "main", "index": 0}],
+        [{"node": "response-finance", "type": "main", "index": 0}]
+      ]
+    },
+    "notion-finance": {
+      "main": [[{"node": "response-finance", "type": "main", "index": 0}]]
+    },
+    "slack-finance": {
+      "main": [[{"node": "response-finance", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["finance", "transactions", "automation"],
+  "active": false
+}

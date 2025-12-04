@@ -1,0 +1,151 @@
+{
+  "name": "SW4_CONHECIMENTO_v2.0.0",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "webhook/knowledge",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-knowledge",
+      "name": "Webhook Knowledge",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Validate Knowledge Entry\nconst body = $input.first().json.body || $input.first().json;\n\nconst validActions = ['create', 'update', 'search', 'delete'];\nconst action = validActions.includes(body.action) ? body.action : 'create';\n\nif (action === 'create' || action === 'update') {\n  if (!body.title || body.title.trim().length < 5) {\n    throw new Error('Title must be at least 5 characters');\n  }\n  if (!body.content || body.content.trim().length < 20) {\n    throw new Error('Content must be at least 20 characters');\n  }\n}\n\nif (action === 'search' && !body.query) {\n  throw new Error('Search query is required');\n}\n\nconst validCategories = ['documentation', 'tutorial', 'faq', 'troubleshooting', 'best-practices', 'other'];\n\nreturn {\n  action: action,\n  entry: {\n    title: body.title?.trim() || '',\n    content: body.content?.trim() || '',\n    category: validCategories.includes(body.category) ? body.category : 'other',\n    tags: body.tags || [],\n    author: body.author || 'system',\n    query: body.query || '',\n    visibility: body.visibility || 'internal',\n    version: body.version || '1.0',\n    createdAt: new Date().toISOString(),\n    updatedAt: new Date().toISOString()\n  }\n};"
+      },
+      "id": "validate-knowledge",
+      "name": "Validate Entry",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.action }}",
+              "operation": "equal",
+              "value2": "create"
+            }
+          ]
+        }
+      },
+      "id": "route-action",
+      "name": "Route by Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Generate Summary and Keywords\nconst entry = $input.first().json.entry;\n\n// Simple keyword extraction (first 5 unique words > 4 chars)\nconst words = entry.content.toLowerCase()\n  .replace(/[^a-záàâãéèêíïóôõöúçñ\\s]/gi, '')\n  .split(/\\s+/)\n  .filter(w => w.length > 4);\n\nconst uniqueWords = [...new Set(words)];\nconst keywords = uniqueWords.slice(0, 10);\n\n// Generate summary (first 200 chars)\nconst summary = entry.content.length > 200 \n  ? entry.content.substring(0, 197) + '...'\n  : entry.content;\n\n// Word count\nconst wordCount = entry.content.split(/\\s+/).length;\n\n// Estimated read time (200 wpm)\nconst readTimeMinutes = Math.ceil(wordCount / 200);\n\nreturn {\n  ...entry,\n  summary: summary,\n  keywords: keywords,\n  wordCount: wordCount,\n  readTimeMinutes: readTimeMinutes,\n  searchableText: `${entry.title} ${entry.content}`.toLowerCase()\n};"
+      },
+      "id": "process-entry",
+      "name": "Process Entry",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.NOTION_SECRET}}"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParametersJson": "{\n  \"parent\": {\"database_id\": \"{{$env.NOTION_KNOWLEDGE_DB_ID}}\"},\n  \"properties\": {\n    \"Title\": {\"title\": [{\"text\": {\"content\": \"{{ $json.title }}\"}}]},\n    \"Category\": {\"select\": {\"name\": \"{{ $json.category }}\"}},\n    \"Author\": {\"rich_text\": [{\"text\": {\"content\": \"{{ $json.author }}\"}}]},\n    \"Summary\": {\"rich_text\": [{\"text\": {\"content\": \"{{ $json.summary }}\"}}]},\n    \"Keywords\": {\"rich_text\": [{\"text\": {\"content\": \"{{ $json.keywords.join(', ') }}\"}}]},\n    \"Word Count\": {\"number\": {{ $json.wordCount }}},\n    \"Read Time\": {\"number\": {{ $json.readTimeMinutes }}},\n    \"Visibility\": {\"select\": {\"name\": \"{{ $json.visibility }}\"}},\n    \"Version\": {\"rich_text\": [{\"text\": {\"content\": \"{{ $json.version }}\"}}]},\n    \"Created\": {\"date\": {\"start\": \"{{ $json.createdAt }}\"}}\n  },\n  \"children\": [\n    {\n      \"object\": \"block\",\n      \"type\": \"paragraph\",\n      \"paragraph\": {\n        \"rich_text\": [{\"type\": \"text\", \"text\": {\"content\": \"{{ $json.content }}\"}}]\n      }\n    }\n  ]\n}"
+      },
+      "id": "notion-knowledge",
+      "name": "Save to Notion",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/{{$env.NOTION_KNOWLEDGE_DB_ID}}/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.NOTION_SECRET}}"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParametersJson": "{\n  \"filter\": {\n    \"or\": [\n      {\n        \"property\": \"Title\",\n        \"title\": {\n          \"contains\": \"{{ $json.entry.query }}\"\n        }\n      },\n      {\n        \"property\": \"Keywords\",\n        \"rich_text\": {\n          \"contains\": \"{{ $json.entry.query }}\"\n        }\n      }\n    ]\n  },\n  \"page_size\": 10\n}"
+      },
+      "id": "search-knowledge",
+      "name": "Search Knowledge",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [850, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"action\": \"{{ $json.action || 'create' }}\",\n  \"message\": \"Operação realizada com sucesso\",\n  \"entry\": {\n    \"title\": \"{{ $json.title }}\",\n    \"category\": \"{{ $json.category }}\",\n    \"wordCount\": {{ $json.wordCount || 0 }},\n    \"readTimeMinutes\": {{ $json.readTimeMinutes || 0 }}\n  }\n}"
+      },
+      "id": "response-knowledge",
+      "name": "Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    }
+  ],
+  "connections": {
+    "webhook-knowledge": {
+      "main": [[{"node": "validate-knowledge", "type": "main", "index": 0}]]
+    },
+    "validate-knowledge": {
+      "main": [[{"node": "route-action", "type": "main", "index": 0}]]
+    },
+    "route-action": {
+      "main": [
+        [{"node": "process-entry", "type": "main", "index": 0}],
+        [{"node": "search-knowledge", "type": "main", "index": 0}]
+      ]
+    },
+    "process-entry": {
+      "main": [[{"node": "notion-knowledge", "type": "main", "index": 0}]]
+    },
+    "notion-knowledge": {
+      "main": [[{"node": "response-knowledge", "type": "main", "index": 0}]]
+    },
+    "search-knowledge": {
+      "main": [[{"node": "response-knowledge", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["knowledge", "documentation", "automation"],
+  "active": false
+}

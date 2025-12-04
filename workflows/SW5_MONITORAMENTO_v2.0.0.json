@@ -1,0 +1,179 @@
+{
+  "name": "SW5_MONITORAMENTO_v2.0.0",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "webhook/monitoring",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-monitoring",
+      "name": "Webhook Monitoring",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutes" : 5
+            }
+          ]
+        }
+      },
+      "id": "schedule-check",
+      "name": "Schedule Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 500]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Process Monitoring Event\nconst input = $input.first().json;\nconst body = input.body || input;\n\nconst validTypes = ['health', 'error', 'warning', 'info', 'metric', 'alert'];\nconst eventType = validTypes.includes(body.type) ? body.type : 'info';\n\nconst validSeverities = ['low', 'medium', 'high', 'critical'];\nconst severity = validSeverities.includes(body.severity) ? body.severity : 'low';\n\nreturn {\n  event: {\n    type: eventType,\n    severity: severity,\n    source: body.source || 'system',\n    message: body.message || 'No message provided',\n    service: body.service || 'unknown',\n    data: body.data || {},\n    timestamp: new Date().toISOString(),\n    correlationId: body.correlationId || `MON-${Date.now()}`,\n    tags: body.tags || []\n  }\n};"
+      },
+      "id": "process-event",
+      "name": "Process Event",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.event.severity }}",
+              "operation": "equal",
+              "value2": "critical"
+            },
+            {
+              "value1": "={{ $json.event.severity }}",
+              "operation": "equal",
+              "value2": "high"
+            }
+          ]
+        }
+      },
+      "id": "check-severity",
+      "name": "Check Severity",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.NOTION_SECRET}}"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParametersJson": "{\n  \"parent\": {\"database_id\": \"{{$env.NOTION_MONITORING_DB_ID}}\"},\n  \"properties\": {\n    \"Event ID\": {\"title\": [{\"text\": {\"content\": \"{{ $json.event.correlationId }}\"}}]},\n    \"Type\": {\"select\": {\"name\": \"{{ $json.event.type }}\"}},\n    \"Severity\": {\"select\": {\"name\": \"{{ $json.event.severity }}\"}},\n    \"Service\": {\"rich_text\": [{\"text\": {\"content\": \"{{ $json.event.service }}\"}}]},\n    \"Source\": {\"rich_text\": [{\"text\": {\"content\": \"{{ $json.event.source }}\"}}]},\n    \"Message\": {\"rich_text\": [{\"text\": {\"content\": \"{{ $json.event.message }}\"}}]},\n    \"Timestamp\": {\"date\": {\"start\": \"{{ $json.event.timestamp }}\"}},\n    \"Resolved\": {\"checkbox\": false}\n  }\n}"
+      },
+      "id": "notion-log",
+      "name": "Log to Notion",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "channel": "{{$env.SLACK_CHANNEL_ALERTS}}",
+        "text": ":rotating_light: *ALERTA {{ $json.event.severity.toUpperCase() }}*\n\n*Tipo:* {{ $json.event.type }}\n*Serviço:* {{ $json.event.service }}\n*Fonte:* {{ $json.event.source }}\n*Mensagem:* {{ $json.event.message }}\n*ID:* {{ $json.event.correlationId }}\n*Timestamp:* {{ $json.event.timestamp }}",
+        "otherOptions": {}
+      },
+      "id": "slack-alert",
+      "name": "Alert Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [850, 500],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Health Check for All Services\nconst services = [\n  { name: 'n8n', url: 'http://localhost:5678/healthz' },\n  { name: 'postgres', url: 'http://localhost:5432' },\n  { name: 'temporal', url: 'http://localhost:7234/health' },\n  { name: 'grafana', url: 'http://localhost:3000/api/health' }\n];\n\nconst results = [];\nconst timestamp = new Date().toISOString();\n\n// Mock health check results (in real scenario, would make HTTP calls)\nfor (const service of services) {\n  results.push({\n    service: service.name,\n    status: 'healthy',\n    responseTime: Math.floor(Math.random() * 100) + 10,\n    lastCheck: timestamp\n  });\n}\n\nreturn {\n  healthCheck: {\n    timestamp: timestamp,\n    overallStatus: 'healthy',\n    services: results,\n    totalServices: services.length,\n    healthyCount: results.filter(r => r.status === 'healthy').length\n  }\n};"
+      },
+      "id": "health-check",
+      "name": "Health Check",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 600]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Collect Metrics\nconst input = $input.first().json;\n\nconst metrics = {\n  timestamp: new Date().toISOString(),\n  workflows: {\n    executed: Math.floor(Math.random() * 1000),\n    successful: Math.floor(Math.random() * 950),\n    failed: Math.floor(Math.random() * 50),\n    averageDuration: (Math.random() * 5).toFixed(2)\n  },\n  system: {\n    cpuUsage: (Math.random() * 100).toFixed(1),\n    memoryUsage: (Math.random() * 100).toFixed(1),\n    diskUsage: (Math.random() * 100).toFixed(1)\n  },\n  api: {\n    requests: Math.floor(Math.random() * 10000),\n    errors: Math.floor(Math.random() * 100),\n    latencyP50: Math.floor(Math.random() * 100),\n    latencyP99: Math.floor(Math.random() * 500)\n  }\n};\n\nreturn { metrics };"
+      },
+      "id": "collect-metrics",
+      "name": "Collect Metrics",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [650, 600]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"event\": {\n    \"id\": \"{{ $json.event?.correlationId || 'N/A' }}\",\n    \"type\": \"{{ $json.event?.type || 'monitoring' }}\",\n    \"severity\": \"{{ $json.event?.severity || 'info' }}\",\n    \"processed\": true\n  },\n  \"timestamp\": \"{{ new Date().toISOString() }}\"\n}"
+      },
+      "id": "response-monitoring",
+      "name": "Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1050, 400]
+    }
+  ],
+  "connections": {
+    "webhook-monitoring": {
+      "main": [[{"node": "process-event", "type": "main", "index": 0}]]
+    },
+    "schedule-check": {
+      "main": [[{"node": "health-check", "type": "main", "index": 0}]]
+    },
+    "process-event": {
+      "main": [[{"node": "check-severity", "type": "main", "index": 0}]]
+    },
+    "check-severity": {
+      "main": [
+        [
+          {"node": "notion-log", "type": "main", "index": 0},
+          {"node": "slack-alert", "type": "main", "index": 0}
+        ],
+        [{"node": "notion-log", "type": "main", "index": 0}]
+      ]
+    },
+    "notion-log": {
+      "main": [[{"node": "response-monitoring", "type": "main", "index": 0}]]
+    },
+    "slack-alert": {
+      "main": [[{"node": "response-monitoring", "type": "main", "index": 0}]]
+    },
+    "health-check": {
+      "main": [[{"node": "collect-metrics", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["monitoring", "alerts", "health", "automation"],
+  "active": false
+}
