@@ -50,3 +50,5 @@ build/
 *credentials*.json
 *secret*.txt
 *token*.txt
+.vercel
+.env*.local
